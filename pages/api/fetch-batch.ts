@@ -10,8 +10,8 @@ import { BatchApiResponse, CodeChefResult } from '@/lib/types';
 const WALL_CLOCK_BUDGET_MS = 45_000;
 
 const MAX_HANDLES_PER_REQUEST = 60;
-const DEFAULT_CONCURRENCY = 4;
-const MAX_CONCURRENCY = 8;
+const DEFAULT_CONCURRENCY = 3;
+const MAX_CONCURRENCY = 6;
 const MAX_ATTEMPTS = 3;
 
 function sleep(ms: number) {
@@ -45,7 +45,7 @@ async function fetchWithRetry(handle: string, deadline: number): Promise<CodeChe
     if (!RETRYABLE.has(last.status)) return last;
     attempt++;
     if (attempt < MAX_ATTEMPTS) {
-      await sleep(jitter(600 * 2 ** attempt)); // 1.2s, 2.4s (+jitter) backoff
+      await sleep(jitter(1500 * 2 ** attempt)); // 3s, 6s (+jitter) — real-world CodeChef 429s need more room than a quick retry
     }
   }
   return last!;

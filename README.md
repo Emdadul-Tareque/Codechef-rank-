@@ -22,15 +22,21 @@ Vercel's Hobby plan.
    fallback for anything not in the dictionary. You confirm/rename/merge
    before it's applied — no silent auto-merging on a report leadership will
    read.
-4. **Fetch** — the app calls CodeChef's public profile pages
-   (`codechef.com/users/<handle>`) from its own server, in small batches,
-   with retries, backoff, and adaptive pacing if CodeChef starts pushing
-   back (see "Rate-limit handling" below). Progress is saved to your
-   browser's local storage, so a refresh mid-run doesn't lose anything.
+4. **Fetch, live** — as soon as university mapping is confirmed you land on
+   the dashboard itself, not a separate loading screen. It calls CodeChef's
+   public profile pages (`codechef.com/users/<handle>`) from its own
+   server, one handle per request, several requests in flight at once. Every
+   single result updates the charts/tables the instant it comes back — you
+   don't wait for a batch to finish to see anything move. A slim progress
+   bar stays pinned at the top until the run finishes (see "Live updates"
+   below for how this works, and "Rate-limit handling" for the
+   retry/backoff behavior). Progress is saved to your browser's local
+   storage, so a refresh mid-run resumes exactly where it left off —
+   already-resolved handles aren't re-fetched.
 5. **Dashboard** — batch × star-tier breakdown, university × star-tier
    breakdown (bar charts + tables), a leaderboard of top performers, and a
    "needs attention" panel for handles that were blocked, not found, or
-   invalid — each retryable with one click.
+   invalid — each retryable with one click, updating live the same way.
 6. **Export** — two Excel downloads:
    - **Result Excel**: Name, Batch, CodeChef Handle, Max Rank,
      University/Institute (plus bonus columns: Current Rating, Star Tier,
@@ -48,6 +54,25 @@ Rating number — the closest real, verifiable equivalent. Live per-contest
 **Global Rank** isn't a stable profile-level stat (it resets/archives per
 contest, and shows "Inactive" for most past contests), so it isn't part of
 this dashboard.
+
+## Live updates
+
+The dashboard is driven by one React state object (`results`, keyed by
+handle) that every chart/table/summary card reads from via `useMemo`. The
+client fetches **one handle per HTTP request**, with `CONCURRENT_REQUESTS`
+(default 4) of those requests in flight at once — each response updates
+`results` immediately, so the UI reflects that single new data point right
+away instead of waiting for a batch.
+
+This was a deliberate choice over having the server stream many results
+back over one long-lived response (Server-Sent Events / chunked transfer):
+that approach works fine in local dev but is inconsistent on Vercel's
+Node.js serverless runtime in practice (buffering/truncation is a commonly
+reported issue). Many small, ordinary request/response calls behave
+identically in dev and in production, so that's what this app uses. The
+trade-off is more total HTTP requests (one per handle instead of one per
+25) — irrelevant at Phitron's roster sizes, and still gentle on CodeChef
+since `CONCURRENT_REQUESTS` caps how many are ever in flight at once.
 
 ## Rate-limit handling ("CodeChef যেন লিমিট না দেয়")
 
@@ -127,10 +152,12 @@ the scraper API route's timeout to 60 seconds, which Hobby supports.
   configurable `maxDuration` the same as Pro (up to 300s without extended
   limits) — double-check current numbers at
   https://vercel.com/docs/functions/limitations before assuming, since
-  platform limits change. If your roster is very large (thousands of
-  students) and batches start timing out, either lower `BATCH_SIZE` in
-  `pages/index.tsx` or raise `maxDuration` in `vercel.json` if your plan
-  allows it.
+  platform limits change. Each fetch request now carries a single handle
+  (see "Live updates" below), so per-request duration is a non-issue even
+  on very large rosters; if you have thousands of students and want faster
+  overall throughput, raise `CONCURRENT_REQUESTS` in `pages/index.tsx`
+  (keep it modest — this is what determines how hard the app leans on
+  CodeChef, not the Vercel timeout).
 - For a roster in the tens of thousands, consider moving the fetch queue to
   a proper background job (e.g. Vercel Cron + a KV store) instead of the
   client-driven batch loop used here — this app's approach is intentionally

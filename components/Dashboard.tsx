@@ -9,6 +9,18 @@ import UniversityChart from '@/components/dashboard/UniversityChart';
 import BreakdownTable from '@/components/dashboard/BreakdownTable';
 import LeaderboardTable from '@/components/dashboard/LeaderboardTable';
 import DataQualityPanel from '@/components/dashboard/DataQualityPanel';
+import FetchProgressBar from '@/components/dashboard/FetchProgressBar';
+
+interface FetchCounts {
+  ok: number;
+  not_found: number;
+  unrated: number;
+  blocked: number;
+  error: number;
+  invalid_handle: number;
+  no_handle: number;
+  pending: number;
+}
 
 interface Props {
   records: JoinedRecord[];
@@ -17,6 +29,12 @@ interface Props {
   retrying: boolean;
   onEditUniversityMapping: () => void;
   onStartOver: () => void;
+  isFetching: boolean;
+  fetchDone: number;
+  fetchTotal: number;
+  fetchCounts: FetchCounts;
+  fetchStatusLine: string;
+  onCancelFetch: () => void;
 }
 
 export default function Dashboard({
@@ -26,6 +44,12 @@ export default function Dashboard({
   retrying,
   onEditUniversityMapping,
   onStartOver,
+  isFetching,
+  fetchDone,
+  fetchTotal,
+  fetchCounts,
+  fetchStatusLine,
+  onCancelFetch,
 }: Props) {
   const summary = computeOverallSummary(records);
   const batchStats = computeBatchStats(records);
@@ -75,6 +99,15 @@ export default function Dashboard({
           </button>
         </div>
       </div>
+
+      <FetchProgressBar
+        total={fetchTotal}
+        done={fetchDone}
+        counts={fetchCounts}
+        isRunning={isFetching}
+        statusLine={fetchStatusLine}
+        onCancel={onCancelFetch}
+      />
 
       <SummaryCards summary={summary} />
 

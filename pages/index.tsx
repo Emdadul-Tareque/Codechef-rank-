@@ -3,17 +3,36 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import UploadStep from '@/components/UploadStep';
 import ColumnMappingStep from '@/components/ColumnMappingStep';
 import UniversityMappingReview from '@/components/UniversityMappingReview';
-import ProcessingStep from '@/components/ProcessingStep';
 import Dashboard from '@/components/Dashboard';
 import { ColumnMapping, RawSheet, buildSourceRows, guessColumnMapping } from '@/lib/excelIO';
 import { buildUniversityMapping, UniversityMappingResult } from '@/lib/universityMap';
-import { cleanHandle, isPlausibleHandle } from '@/lib/handleUtils';
+import { isPlausibleHandle } from '@/lib/handleUtils';
 import { BatchApiResponse, CodeChefResult, FetchStatus, JoinedRecord, SourceRow } from '@/lib/types';
 
-type Step = 'upload' | 'mapping' | 'university_review' | 'processing' | 'dashboard';
+type Step = 'upload' | 'mapping' | 'university_review' | 'dashboard';
 
 const SESSION_KEY = 'phitron_codechef_session_v1';
-const BATCH_SIZE = 25;
+// Persistent cache of resolved CodeChef results, keyed by handle — survives
+// "Start over" and even a completely different file upload. If you have to
+// re-upload after fixing a mistake (e.g. a wrong column mapping), every
+// handle that was already successfully resolved is reused instantly instead
+// of being re-fetched and potentially re-triggering CodeChef's rate limiting.
+const RATINGS_CACHE_KEY = 'phitron_codechef_ratings_cache_v1';
+
+// How many CodeChef profile requests are in flight at once. Each request now
+// carries exactly ONE handle (see runFetchLoop) so every single result comes
+// straight back into the UI the moment it resolves, instead of waiting for a
+// whole batch to finish before anything visibly changes.
+//
+// Kept deliberately conservative (2 concurrent, 700ms base spacing) — real
+// deployments have seen CodeChef 429 a large share of requests when pushed
+// harder than this. If you're seeing few/no blocks, these can be raised;
+// if you're still seeing many, lower CONCURRENT_REQUESTS to 1 first.
+const CONCURRENT_REQUESTS = 2;
+const BASE_DELAY_MS = 700;
+const RECENT_WINDOW = 15; // how many recent outcomes we look at to detect a block streak
+
+const TERMINAL_STATUSES: ReadonlySet<FetchStatus> = new Set(['ok', 'not_found', 'unrated', 'invalid_handle', 'no_handle']);
 
 interface SessionState {
   fingerprint: string;
@@ -55,6 +74,25 @@ function clearSession() {
   }
 }
 
+function loadRatingsCache(): Record<string, CodeChefResult> {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = window.localStorage.getItem(RATINGS_CACHE_KEY);
+    if (!raw) return {};
+    return JSON.parse(raw) as Record<string, CodeChefResult>;
+  } catch {
+    return {};
+  }
+}
+
+function saveRatingsCache(cache: Record<string, CodeChefResult>) {
+  try {
+    window.localStorage.setItem(RATINGS_CACHE_KEY, JSON.stringify(cache));
+  } catch {
+    // Non-fatal — worst case this run just doesn't benefit from caching.
+  }
+}
+
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -78,9 +116,17 @@ export default function Home() {
   const cancelRef = useRef(false);
   const resultsRef = useRef(results);
   resultsRef.current = results;
+  const ratingsCacheRef = useRef<Record<string, CodeChefResult>>({});
 
   useEffect(() => {
     setSavedSession(loadSession());
+    ratingsCacheRef.current = loadRatingsCache();
+  }, []);
+
+  const cacheIfTerminal = useCallback((handle: string, result: CodeChefResult) => {
+    if (!TERMINAL_STATUSES.has(result.status)) return;
+    ratingsCacheRef.current = { ...ratingsCacheRef.current, [handle]: result };
+    saveRatingsCache(ratingsCacheRef.current);
   }, []);
 
   const persist = useCallback((rows: SourceRow[], uniMap: UniversityMappingResult, res: Record<string, CodeChefResult>) => {
@@ -101,9 +147,14 @@ export default function Home() {
     setSourceRows(savedSession.sourceRows);
     setUniversityMapping(savedSession.universityMapping);
     setResults(savedSession.results);
-    const total = savedSession.sourceRows.length;
-    const done = Object.keys(savedSession.results).length;
-    setStep(done >= total ? 'dashboard' : 'processing');
+    setStep('dashboard');
+    // Jump straight to the (already-live) dashboard and keep going on
+    // whatever wasn't finished last time — already-resolved handles are
+    // skipped automatically inside runFetchLoop.
+    setTimeout(
+      () => runFetchLoop(savedSession.sourceRows.map((r) => r.handle), savedSession.universityMapping, savedSession.sourceRows),
+      0
+    );
   };
 
   const handleDiscardSaved = () => {
@@ -125,7 +176,10 @@ export default function Home() {
   };
 
   // ---------------------------------------------------------------------
-  // Step 3: university mapping confirmed -> apply + start fetching
+  // Step 3: university mapping confirmed -> apply + start fetching.
+  // We jump straight to the dashboard: it renders immediately (all rows
+  // "pending") and fills itself in live as results stream back, rather than
+  // sitting behind a separate blocking progress screen.
   // ---------------------------------------------------------------------
   const handleUniversityConfirm = (uniResult: UniversityMappingResult) => {
     const updatedRows = sourceRows.map((r) => ({
@@ -134,20 +188,35 @@ export default function Home() {
     }));
     setSourceRows(updatedRows);
     setUniversityMapping(uniResult);
-    setResults({});
-    persist(updatedRows, uniResult, {});
-    setStep('processing');
-    // Kick off in the next tick so state above has committed.
+
+    // Pre-seed from the persistent ratings cache — if this exact handle was
+    // already successfully resolved in a previous run (even a totally
+    // different upload), reuse it instead of hitting CodeChef again.
+    const seeded: Record<string, CodeChefResult> = {};
+    for (const row of updatedRows) {
+      const cached = row.handle && ratingsCacheRef.current[row.handle];
+      if (cached) seeded[row.handle] = cached;
+    }
+    setResults(seeded);
+    persist(updatedRows, uniResult, seeded);
+    setStep('dashboard');
     setTimeout(() => runFetchLoop(updatedRows.map((r) => r.handle), uniResult, updatedRows), 0);
   };
 
   // ---------------------------------------------------------------------
-  // Core fetch loop — shared by the initial run and the "retry" action.
+  // Core fetch loop — shared by the initial run, "resume", and "retry".
+  //
+  // Each worker requests ONE handle at a time (not a batch of 25) so the
+  // UI updates the instant that single result comes back. CONCURRENT_REQUESTS
+  // workers run in parallel, each pulling the next handle off a shared
+  // cursor — the same bounded-concurrency pattern used server-side, just
+  // moved to the client so per-handle progress is visible.
   // ---------------------------------------------------------------------
   const runFetchLoop = useCallback(
     async (handles: string[], uniMap: UniversityMappingResult, rows: SourceRow[]) => {
       cancelRef.current = false;
       setIsFetching(true);
+      setStatusLine('');
 
       const unique = Array.from(new Set(handles));
       const toFetch: string[] = [];
@@ -155,6 +224,8 @@ export default function Home() {
 
       for (const h of unique) {
         if (!h) continue; // blank handled by JoinedRecord default ('no_handle')
+        const existing = resultsRef.current[h];
+        if (existing && TERMINAL_STATUSES.has(existing.status)) continue; // already resolved — don't re-fetch
         if (!isPlausibleHandle(h)) {
           immediate[h] = {
             handle: h,
@@ -172,71 +243,97 @@ export default function Home() {
 
       let current = { ...resultsRef.current, ...immediate };
       setResults(current);
+      persist(rows, uniMap, current);
+      for (const [h, r] of Object.entries(immediate)) cacheIfTerminal(h, r);
 
-      const batches: string[][] = [];
-      for (let i = 0; i < toFetch.length; i += BATCH_SIZE) batches.push(toFetch.slice(i, i + BATCH_SIZE));
+      if (toFetch.length === 0) {
+        setIsFetching(false);
+        setStatusLine('Done.');
+        return;
+      }
 
-      for (let bi = 0; bi < batches.length; bi++) {
-        if (cancelRef.current) break;
-        const batch = batches[bi];
-        setStatusLine(`Batch ${bi + 1} of ${batches.length}…`);
+      setStatusLine(`Fetching ${toFetch.length} handle${toFetch.length === 1 ? '' : 's'}…`);
 
-        try {
-          const resp = await fetch('/api/fetch-batch', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ handles: batch }),
-          });
-          if (!resp.ok) {
-            const err = await resp.json().catch(() => ({}));
-            throw new Error(err?.error || `HTTP ${resp.status}`);
-          }
-          const data: BatchApiResponse = await resp.json();
-          const updated = { ...current };
-          for (const item of data.results) updated[item.handle] = item.result;
-          current = updated;
-          setResults(current);
-          persist(rows, uniMap, current);
+      // Rolling window of recent outcomes, shared across workers, used to
+      // slow everyone down together if CodeChef starts pushing back.
+      const recentOutcomes: FetchStatus[] = [];
+      let extraDelayMs = 0;
 
-          if (data.meta.blockedCount > 0) {
-            setStatusLine(
-              `CodeChef pushed back on ${data.meta.blockedCount}/${batch.length} in this batch — slowing down…`
-            );
-          }
-          if (bi < batches.length - 1) {
-            await sleep(data.meta.suggestedDelayMs + Math.random() * 300);
-          }
-        } catch (e: any) {
-          const updated = { ...current };
-          for (const h of batch) {
-            updated[h] = {
-              handle: h,
-              status: 'error' as FetchStatus,
-              currentRating: null,
-              highestRating: null,
-              stars: null,
-              countryName: null,
-              note: `Batch request failed: ${e?.message || e}. Safe to retry from the dashboard.`,
+      function recordOutcome(status: FetchStatus) {
+        recentOutcomes.push(status);
+        if (recentOutcomes.length > RECENT_WINDOW) recentOutcomes.shift();
+        const blockedRecent = recentOutcomes.filter((s) => s === 'blocked' || s === 'error').length;
+        if (blockedRecent >= 6) extraDelayMs = 20000;
+        else if (blockedRecent >= 3) extraDelayMs = 8000;
+        else if (blockedRecent >= 1) extraDelayMs = 2500;
+        else extraDelayMs = 0;
+      }
+
+      let cursor = 0;
+      let blockedTotal = 0;
+
+      async function worker() {
+        while (cursor < toFetch.length) {
+          if (cancelRef.current) return;
+          const idx = cursor++;
+          const handle = toFetch[idx];
+
+          try {
+            const resp = await fetch('/api/fetch-batch', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ handles: [handle] }),
+            });
+            if (!resp.ok) {
+              const err = await resp.json().catch(() => ({}));
+              throw new Error(err?.error || `HTTP ${resp.status}`);
+            }
+            const data: BatchApiResponse = await resp.json();
+            const item = data.results[0];
+            current = { ...current, [item.handle]: item.result };
+            setResults(current); // <-- fires immediately for this one handle
+            persist(rows, uniMap, current);
+            cacheIfTerminal(item.handle, item.result);
+            recordOutcome(item.result.status);
+            if (item.result.status === 'blocked') {
+              blockedTotal++;
+              setStatusLine(`CodeChef is pushing back — slowing down (${blockedTotal} blocked so far)…`);
+            }
+          } catch (e: any) {
+            current = {
+              ...current,
+              [handle]: {
+                handle,
+                status: 'error' as FetchStatus,
+                currentRating: null,
+                highestRating: null,
+                stars: null,
+                countryName: null,
+                note: `Request failed: ${e?.message || e}. Safe to retry from the dashboard.`,
+              },
             };
+            setResults(current);
+            persist(rows, uniMap, current);
+            recordOutcome('error');
           }
-          current = updated;
-          setResults(current);
-          persist(rows, uniMap, current);
-          await sleep(4000); // back off harder after an outright failure
+
+          if (cancelRef.current) return;
+          await sleep(BASE_DELAY_MS + extraDelayMs + Math.random() * 200);
         }
       }
 
+      const workers = Array.from({ length: Math.min(CONCURRENT_REQUESTS, toFetch.length) }, () => worker());
+      await Promise.all(workers);
+
       setIsFetching(false);
-      setStatusLine(cancelRef.current ? 'Cancelled.' : 'Done.');
+      setStatusLine(cancelRef.current ? 'Paused.' : 'Done.');
     },
-    [persist]
+    [persist, cacheIfTerminal]
   );
 
-  const handleCancel = () => {
+  const handleCancelFetch = () => {
     cancelRef.current = true;
   };
-
-  const handleFinishEarly = () => setStep('dashboard');
 
   const handleRetryHandles = async (handles: string[]) => {
     if (!universityMapping) return;
@@ -331,18 +428,6 @@ export default function Home() {
           />
         )}
 
-        {step === 'processing' && (
-          <ProcessingStep
-            total={records.length}
-            done={done}
-            counts={progressCounts}
-            isRunning={isFetching}
-            statusLine={statusLine}
-            onCancel={handleCancel}
-            onFinishEarly={handleFinishEarly}
-          />
-        )}
-
         {step === 'dashboard' && universityMapping && (
           <Dashboard
             records={records}
@@ -351,6 +436,12 @@ export default function Home() {
             retrying={retrying}
             onEditUniversityMapping={() => setStep('university_review')}
             onStartOver={handleStartOver}
+            isFetching={isFetching}
+            fetchDone={done}
+            fetchTotal={records.length}
+            fetchCounts={progressCounts}
+            fetchStatusLine={statusLine}
+            onCancelFetch={handleCancelFetch}
           />
         )}
       </div>
