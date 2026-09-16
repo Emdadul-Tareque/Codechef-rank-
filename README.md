@@ -5,8 +5,9 @@ University/Institute), it bulk-fetches each student's CodeChef rating,
 cleans up messy university names, and gives you a batch/university
 dashboard — with everything exportable back to Excel.
 
-No database, no external services, no paid tier required. Deploys free on
-Vercel's Hobby plan.
+No database required. Deploys free on Vercel's Hobby plan (the CodeChef data
+source itself — see below — has its own paid tiers if you outgrow the free
+one).
 
 ## What it does
 
@@ -23,16 +24,17 @@ Vercel's Hobby plan.
    before it's applied — no silent auto-merging on a report leadership will
    read.
 4. **Fetch, live** — as soon as university mapping is confirmed you land on
-   the dashboard itself, not a separate loading screen. It calls CodeChef's
-   public profile pages (`codechef.com/users/<handle>`) from its own
-   server, one handle per request, several requests in flight at once. Every
-   single result updates the charts/tables the instant it comes back — you
-   don't wait for a batch to finish to see anything move. A slim progress
-   bar stays pinned at the top until the run finishes (see "Live updates"
-   below for how this works, and "Rate-limit handling" for the
-   retry/backoff behavior). Progress is saved to your browser's local
-   storage, so a refresh mid-run resumes exactly where it left off —
-   already-resolved handles aren't re-fetched.
+   the dashboard itself, not a separate loading screen. It fetches each
+   student's rating through the [Parse.bot CodeChef
+   API](https://parse.bot/marketplace/57b88850-0922-4fec-9b43-39f9fa21bd9b/codechef-com-api)
+   (see "Data source" below), one handle per request, paced to stay under
+   that API's rate limit. Every single result updates the charts/tables the
+   instant it comes back — you don't wait for a batch to finish to see
+   anything move. A slim progress bar stays pinned at the top until the run
+   finishes. Progress is saved to your browser's local storage, so a
+   refresh mid-run resumes exactly where it left off — already-resolved
+   handles aren't re-fetched, even across a full re-upload (see "Live
+   updates" below).
 5. **Dashboard** — batch × star-tier breakdown, university × star-tier
    breakdown (bar charts + tables), a leaderboard of top performers, and a
    "needs attention" panel for handles that were blocked, not found, or
@@ -55,12 +57,76 @@ Rating number — the closest real, verifiable equivalent. Live per-contest
 contest, and shows "Inactive" for most past contests), so it isn't part of
 this dashboard.
 
+## Data source: Parse.bot's CodeChef API
+
+CodeChef has no official public ratings API, and fetching `codechef.com`
+directly from a Vercel server IP runs into CodeChef's own bot-mitigation
+fairly quickly (this app used to scrape the profile page directly — see
+`lib/codechefScraper.ts`, still in the repo — until real deployments started
+seeing a large share of requests come back `429`). It now goes through
+[Parse.bot's managed CodeChef API](https://parse.bot/marketplace/57b88850-0922-4fec-9b43-39f9fa21bd9b/codechef-com-api)
+instead (`lib/parseBotScraper.ts`), which fetches the data on its own
+infrastructure and hands it back as JSON.
+
+**Setup — one required environment variable:**
+
+| Variable | Required | Where to get it |
+|---|---|---|
+| `PARSE_BOT_API_KEY` | Yes | Sign up at [parse.bot](https://parse.bot), grab your key from your account |
+| `PARSE_BOT_ENDPOINT` | No | Only if you've subscribed to your own pinned copy of the API on Parse.bot |
+
+Locally: copy `.env.local.example` to `.env.local` and fill in the key. On
+Vercel: **Project → Settings → Environment Variables** → add
+`PARSE_BOT_API_KEY` → redeploy. Without it, every handle comes back with a
+clear `error` status telling you the variable is missing, instead of
+retrying pointlessly or failing silently.
+
+**Pricing/limits to plan around** (see [parse.bot/pricing](https://parse.bot/pricing) for current numbers):
+
+| Plan | Credits/month | Rate limit |
+|---|---|---|
+| Free | 200 | 5 req/min |
+| Hobby ($30/mo) | 1,000 | 20 req/min |
+| Developer ($100/mo) | 5,000 | 100 req/min |
+
+`get_user_info` costs 1 credit per **successful** call. For a one-off run of
+Phitron's ~850 handles, the Free tier's 200 credits/month isn't enough in a
+single month — Hobby covers it with room to spare. The persistent ratings
+cache (see "Live updates" below) means a handle is only ever billed once,
+even across re-uploads, so re-running after fixing a mistake doesn't re-burn
+credits on handles you already resolved.
+
+**Rate limiting is now mostly Parse.bot's problem, not CodeChef's** — but you
+still have to respect *their* per-plan req/min cap, or they'll 429 you. This
+is controlled by one constant:
+
+```ts
+// pages/index.tsx
+const PARSE_BOT_REQUESTS_PER_MINUTE = 5; // set to your actual plan: 5 / 20 / 100 / 300
+```
+
+This defaults to the Free tier's 5/min (conservative on purpose) — **update
+it to match whichever plan your API key is actually on**, or every run will
+be needlessly slow. The app paces requests to exactly this rate
+(`CONCURRENT_REQUESTS = 1`, spaced `60000 / PARSE_BOT_REQUESTS_PER_MINUTE`
+ms apart), and still backs off further and retries (with the same
+Needs-Attention/Retry flow as before) if it gets a 429 anyway.
+
+**Switching back to direct scraping:** `lib/codechefScraper.ts` (the
+original CSS-selector-based scraper) is untouched and still works as a
+drop-in replacement — both files export the same
+`fetchCodeChefProfile(handle)` function. To switch, change the one import
+line in `pages/api/fetch-batch.ts`.
+
+**A note on the API key you're using:** if it was ever pasted into a chat,
+screenshot, or shared doc, treat it as compromised and regenerate it from
+your Parse.bot account — same as any other credential.
+
 ## Live updates
 
 The dashboard is driven by one React state object (`results`, keyed by
 handle) that every chart/table/summary card reads from via `useMemo`. The
-client fetches **one handle per HTTP request**, with `CONCURRENT_REQUESTS`
-(default 4) of those requests in flight at once — each response updates
+client fetches **one handle per HTTP request** — each response updates
 `results` immediately, so the UI reflects that single new data point right
 away instead of waiting for a batch.
 
@@ -69,39 +135,14 @@ back over one long-lived response (Server-Sent Events / chunked transfer):
 that approach works fine in local dev but is inconsistent on Vercel's
 Node.js serverless runtime in practice (buffering/truncation is a commonly
 reported issue). Many small, ordinary request/response calls behave
-identically in dev and in production, so that's what this app uses. The
-trade-off is more total HTTP requests (one per handle instead of one per
-25) — irrelevant at Phitron's roster sizes, and still gentle on CodeChef
-since `CONCURRENT_REQUESTS` caps how many are ever in flight at once.
+identically in dev and in production, so that's what this app uses.
 
-## Rate-limit handling ("CodeChef যেন লিমিট না দেয়")
-
-CodeChef has no official public ratings API, and it fronts the site with
-bot-mitigation. This app is defensive about it:
-
-- Small, configurable concurrency per batch (default 4, capped at 8).
-- Exponential backoff + jitter, up to 3 attempts per handle.
-- Detects both HTTP-level blocks (403/429/503) and 200-status "bot
-  challenge" pages.
-- Reads `Retry-After` when CodeChef sends one.
-- **Adaptive backpressure**: if a batch comes back mostly blocked, the
-  server tells the browser to wait much longer (up to 15s) before the next
-  batch, instead of hammering away at a fixed interval.
-- Batches are capped at 60 handles per server request and given a 45-second
-  internal deadline, well inside the 60-second function timeout configured
-  in `vercel.json` — so a slow batch always returns partial results instead
-  of the platform killing the request outright.
-- If CodeChef still blocks a run hard, lower concurrency and raise the delay
-  by editing the constants at the top of `pages/api/fetch-batch.ts`
-  (`DEFAULT_CONCURRENCY`, `WALL_CLOCK_BUDGET_MS`), then just click **Retry**
-  on the "Needs attention" panel — it only re-fetches the handles that
-  failed, not the whole roster.
-
-**A note on scraping generally:** this reads the same public HTML page a
-browser would show a logged-out visitor. It doesn't touch anything
-authenticated or paid, but scraping is still against the letter of most
-sites' Terms of Service — worth knowing if you plan to run this often or at
-very large scale.
+On top of that, a **persistent ratings cache** (a second, separate
+`localStorage` entry, keyed by handle rather than by upload) survives
+"Start over" and even a completely different file upload. If you fix a
+mistake and re-upload the same roster, every handle that was already
+successfully resolved is reused instantly — only genuinely new or
+previously-failed handles get fetched again.
 
 ## Edge cases handled
 
@@ -140,39 +181,40 @@ Open http://localhost:3000.
 2. Go to https://vercel.com → **Add New → Project** → import that repo.
 3. Framework preset auto-detects as **Next.js** — leave build settings as
    default (`npm run build`).
-4. No environment variables are required.
+4. Add the environment variable: **Settings → Environment Variables** →
+   `PARSE_BOT_API_KEY` = your key (see "Data source" above).
 5. Click **Deploy**. You'll get a `https://<something>.vercel.app` URL.
 
-That's it — the Hobby (free) plan is enough. `vercel.json` already extends
-the scraper API route's timeout to 60 seconds, which Hobby supports.
+`vercel.json` already extends the API route's timeout to 60 seconds, which
+Hobby supports.
 
-### If you outgrow the free tier
+### If you outgrow the free tier(s)
 
-- Vercel's Hobby plan currently defaults function duration to 300s but caps
-  configurable `maxDuration` the same as Pro (up to 300s without extended
-  limits) — double-check current numbers at
-  https://vercel.com/docs/functions/limitations before assuming, since
-  platform limits change. Each fetch request now carries a single handle
-  (see "Live updates" below), so per-request duration is a non-issue even
-  on very large rosters; if you have thousands of students and want faster
-  overall throughput, raise `CONCURRENT_REQUESTS` in `pages/index.tsx`
-  (keep it modest — this is what determines how hard the app leans on
-  CodeChef, not the Vercel timeout).
+- **Vercel's own limits** rarely matter here: each fetch request carries a
+  single handle, so per-request duration is a non-issue even on very large
+  rosters. Double-check current numbers at
+  https://vercel.com/docs/functions/limitations if you're curious, since
+  platform limits change.
+- **Parse.bot's plan is the real lever.** Throughput is capped by
+  `PARSE_BOT_REQUESTS_PER_MINUTE` matching whatever plan you're paying for —
+  raise both together (upgrade the plan, update the constant) for faster
+  full-roster runs.
 - For a roster in the tens of thousands, consider moving the fetch queue to
   a proper background job (e.g. Vercel Cron + a KV store) instead of the
-  client-driven batch loop used here — this app's approach is intentionally
-  simple (no database, no queue service) to stay on the free tier for
-  Phitron's actual batch sizes (hundreds, not tens of thousands).
+  client-driven loop used here — this app's approach is intentionally simple
+  (no database, no queue service) to stay lightweight for Phitron's actual
+  batch sizes (hundreds, not tens of thousands).
 
 ## Project structure
 
 ```
 pages/
   index.tsx            — the whole UI flow (upload → mapping → review → fetch → dashboard)
-  api/fetch-batch.ts   — server-side scraper endpoint (concurrency, retries, backoff)
+  api/fetch-batch.ts   — server-side fetch endpoint (concurrency, retries, backoff)
 components/            — step screens + dashboard widgets
 lib/
-  codechefScraper.ts   — single-profile fetch + parse (server-only, uses cheerio)
+  parseBotScraper.ts   — fetches ratings via the Parse.bot CodeChef API (server-only, current default)
+  codechefScraper.ts   — original direct-scrape implementation (server-only, uses cheerio; kept as a drop-in alternative)
   handleUtils.ts        — handle cleaning/validation (safe on client + server)
   excelIO.ts             — reading the upload, writing both export workbooks
   universityMap.ts       — curated alias dictionary + fuzzy clustering fallback

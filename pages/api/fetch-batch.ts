@@ -1,5 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { fetchCodeChefProfile } from '@/lib/codechefScraper';
+import { fetchCodeChefProfile } from '@/lib/parseBotScraper';
 import { cleanHandle } from '@/lib/handleUtils';
 import { BatchApiResponse, CodeChefResult } from '@/lib/types';
 
@@ -42,10 +42,15 @@ async function fetchWithRetry(handle: string, deadline: number): Promise<CodeChe
       );
     }
     last = await fetchCodeChefProfile(handle);
+    if (last.note?.startsWith('__NO_RETRY__')) {
+      // Configuration errors (bad/missing API key) won't fix themselves on
+      // retry — fail fast instead of burning 2 more attempts and ~9s per handle.
+      return { ...last, note: last.note.replace('__NO_RETRY__', '') };
+    }
     if (!RETRYABLE.has(last.status)) return last;
     attempt++;
     if (attempt < MAX_ATTEMPTS) {
-      await sleep(jitter(1500 * 2 ** attempt)); // 3s, 6s (+jitter) — real-world CodeChef 429s need more room than a quick retry
+      await sleep(jitter(1500 * 2 ** attempt)); // 3s, 6s (+jitter) backoff, e.g. after a provider 429
     }
   }
   return last!;

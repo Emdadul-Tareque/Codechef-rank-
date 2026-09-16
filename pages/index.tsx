@@ -19,17 +19,18 @@ const SESSION_KEY = 'phitron_codechef_session_v1';
 // of being re-fetched and potentially re-triggering CodeChef's rate limiting.
 const RATINGS_CACHE_KEY = 'phitron_codechef_ratings_cache_v1';
 
-// How many CodeChef profile requests are in flight at once. Each request now
-// carries exactly ONE handle (see runFetchLoop) so every single result comes
-// straight back into the UI the moment it resolves, instead of waiting for a
-// whole batch to finish before anything visibly changes.
-//
-// Kept deliberately conservative (2 concurrent, 700ms base spacing) — real
-// deployments have seen CodeChef 429 a large share of requests when pushed
-// harder than this. If you're seeing few/no blocks, these can be raised;
-// if you're still seeing many, lower CONCURRENT_REQUESTS to 1 first.
-const CONCURRENT_REQUESTS = 2;
-const BASE_DELAY_MS = 700;
+// How many CodeChef profile requests are in flight at once, and how far
+// apart, now that these go through the Parse.bot managed API
+// (lib/parseBotScraper.ts) instead of scraping codechef.com directly.
+// Parse.bot enforces a hard per-plan requests/minute cap and returns 429 if
+// you exceed it — so pacing here must match whatever plan the API key is on:
+//   Free: 5 req/min · Hobby: 20 req/min · Developer: 100 req/min · Team: 300 req/min
+// Set PARSE_BOT_REQUESTS_PER_MINUTE below to your actual plan. Defaulting to
+// the Free tier's 5/min is deliberately conservative — raise it once you've
+// confirmed which plan the key is actually on.
+const PARSE_BOT_REQUESTS_PER_MINUTE = 5;
+const CONCURRENT_REQUESTS = 1; // single-file pacing is the simplest way to guarantee the req/min cap is respected
+const BASE_DELAY_MS = Math.ceil(60000 / PARSE_BOT_REQUESTS_PER_MINUTE);
 const RECENT_WINDOW = 15; // how many recent outcomes we look at to detect a block streak
 
 const TERMINAL_STATUSES: ReadonlySet<FetchStatus> = new Set(['ok', 'not_found', 'unrated', 'invalid_handle', 'no_handle']);
@@ -263,9 +264,12 @@ export default function Home() {
         recentOutcomes.push(status);
         if (recentOutcomes.length > RECENT_WINDOW) recentOutcomes.shift();
         const blockedRecent = recentOutcomes.filter((s) => s === 'blocked' || s === 'error').length;
-        if (blockedRecent >= 6) extraDelayMs = 20000;
-        else if (blockedRecent >= 3) extraDelayMs = 8000;
-        else if (blockedRecent >= 1) extraDelayMs = 2500;
+        // Scaled off BASE_DELAY_MS (itself derived from the plan's req/min)
+        // rather than a fixed number, so this stays sensible whichever
+        // Parse.bot plan PARSE_BOT_REQUESTS_PER_MINUTE is set to.
+        if (blockedRecent >= 6) extraDelayMs = BASE_DELAY_MS * 4;
+        else if (blockedRecent >= 3) extraDelayMs = BASE_DELAY_MS * 2;
+        else if (blockedRecent >= 1) extraDelayMs = BASE_DELAY_MS;
         else extraDelayMs = 0;
       }
 
