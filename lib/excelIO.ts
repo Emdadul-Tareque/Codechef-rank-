@@ -203,6 +203,72 @@ export function exportResultWorkbook(records: JoinedRecord[], filename = 'codech
   XLSX.writeFile(wb, filename);
 }
 
+export function exportContestBreakdownWorkbook(breakdown: {
+  eventLabel: string;
+  increased: Array<{ name: string; batch: string; university: string; handle: string; contestName: string; ratingBefore: number; ratingAfter: number; delta: number }>;
+  decreased: Array<{ name: string; batch: string; university: string; handle: string; contestName: string; ratingBefore: number; ratingAfter: number; delta: number }>;
+  unchanged: Array<{ name: string; batch: string; university: string; handle: string; contestName: string; ratingBefore: number; ratingAfter: number; delta: number }>;
+  didNotParticipate: JoinedRecord[];
+  unresolved: JoinedRecord[];
+}) {
+  const wb = XLSX.utils.book_new();
+
+  const toRow = (p: { name: string; batch: string; university: string; handle: string; contestName: string; ratingBefore: number; ratingAfter: number; delta: number }, change: string) => ({
+    Name: p.name,
+    Batch: p.batch,
+    'University/Institute': p.university,
+    'CodeChef Handle': p.handle,
+    'Contest Played': p.contestName,
+    'Rating Before': p.ratingBefore,
+    'Rating After': p.ratingAfter,
+    Change: p.delta,
+    Result: change,
+  });
+
+  const rows = [
+    ...breakdown.increased.map((p) => toRow(p, 'Increased')),
+    ...breakdown.decreased.map((p) => toRow(p, 'Decreased')),
+    ...breakdown.unchanged.map((p) => toRow(p, 'Unchanged')),
+  ];
+  const wsMain = XLSX.utils.json_to_sheet(rows);
+  wsMain['!cols'] = [
+    { wch: 24 },
+    { wch: 12 },
+    { wch: 40 },
+    { wch: 20 },
+    { wch: 32 },
+    { wch: 12 },
+    { wch: 12 },
+    { wch: 10 },
+    { wch: 12 },
+  ];
+  XLSX.utils.book_append_sheet(wb, wsMain, 'Participated');
+
+  const notPlayedRows = breakdown.didNotParticipate.map((r) => ({
+    Name: r.name,
+    Batch: r.batch,
+    'University/Institute': r.universityNormalized,
+    'CodeChef Handle': r.handle,
+  }));
+  const wsNotPlayed = XLSX.utils.json_to_sheet(notPlayedRows);
+  XLSX.utils.book_append_sheet(wb, wsNotPlayed, 'Did Not Participate');
+
+  if (breakdown.unresolved.length > 0) {
+    const unresolvedRows = breakdown.unresolved.map((r) => ({
+      Name: r.name,
+      Batch: r.batch,
+      'University/Institute': r.universityNormalized,
+      'CodeChef Handle': r.handle,
+      Status: STATUS_LABEL[r.result.status] || r.result.status,
+    }));
+    const wsUnresolved = XLSX.utils.json_to_sheet(unresolvedRows);
+    XLSX.utils.book_append_sheet(wb, wsUnresolved, 'Unresolved (Not Fetched Yet)');
+  }
+
+  const safeName = breakdown.eventLabel.replace(/[^a-z0-9]+/gi, '_').slice(0, 40) || 'contest';
+  XLSX.writeFile(wb, `contest_breakdown_${safeName}.xlsx`);
+}
+
 export interface BatchStat {
   batch: string;
   total: number;

@@ -24,6 +24,14 @@ export type FetchStatus =
   | 'blocked'
   | 'error';
 
+/** One entry in a student's per-contest rating history (from Parse.bot's date_versus_rating). */
+export interface ContestHistoryEntry {
+  code: string; // e.g. "START101B" — unique per division
+  name: string; // e.g. "Starters 101 Division 2 (Rated)"
+  rating: number; // rating AFTER this contest
+  end_date: string; // "YYYY-MM-DD HH:mm:ss"
+}
+
 export interface CodeChefResult {
   handle: string;
   status: FetchStatus;
@@ -32,6 +40,13 @@ export interface CodeChefResult {
   stars: number | null; // 1-7, null if never rated
   countryName: string | null;
   note: string;
+  // Optional — only populated by lib/parseBotScraper.ts (the direct-scrape
+  // fallback in lib/codechefScraper.ts doesn't extract full history). Used
+  // by the Contest Analysis section. Sorted ascending by end_date, capped to
+  // a reasonable length. Always read as `result.contestHistory || []` since
+  // older cached entries (from before this field existed) won't have it.
+  contestHistory?: ContestHistoryEntry[];
+  initialRating?: number | null; // starting rating before their first-ever contest (usually 1000)
 }
 
 /** A fully joined record: source row + fetched CodeChef data. */

@@ -39,13 +39,20 @@ one).
    breakdown (bar charts + tables), a leaderboard of top performers, and a
    "needs attention" panel for handles that were blocked, not found, or
    invalid — each retryable with one click, updating live the same way.
-6. **Export** — two Excel downloads:
+6. **Contest analysis** — pick any contest from a dropdown (defaults to the
+   most recent) and see, for that contest specifically: how many students'
+   rating went up, how many went down, how many were unchanged, and who
+   didn't play at all — with a full before/after list, exportable on its own.
+7. **Export** — three Excel downloads:
    - **Result Excel**: Name, Batch, CodeChef Handle, Max Rank,
      University/Institute (plus bonus columns: Current Rating, Star Tier,
      Status, Notes).
    - **Full Report Excel**: multi-sheet workbook — Summary, Batch Breakdown,
      University Breakdown, University Mapping audit trail, Leaderboard,
      Needs Attention, and Raw Data.
+   - **Contest Breakdown Excel**: whichever contest is selected in Contest
+     Analysis — Participated / Did Not Participate / Unresolved as separate
+     sheets.
 
 ## Important terminology note
 
@@ -56,6 +63,28 @@ Rating number — the closest real, verifiable equivalent. Live per-contest
 **Global Rank** isn't a stable profile-level stat (it resets/archives per
 contest, and shows "Inactive" for most past contests), so it isn't part of
 this dashboard.
+
+## Contest analysis: why contests are grouped, not matched by exact code
+
+CodeChef commonly runs the *same* contest across several rating divisions on
+the same day — e.g. "Starters 101 Division 2 (Rated)" and "Starters 101
+Division 4 (Rated)" are the same real-world contest; CodeChef auto-assigns a
+student to a division based on their current rating. Matching purely by
+contest `code` would wrongly mark a Division-4 student as "did not
+participate" in a contest their Division-2 classmates played the same day.
+
+`lib/contestAnalysis.ts` groups entries into a logical "event" by a
+normalized contest name (division suffix and "(Rated)"/"(Unrated)" stripped)
+plus calendar date, so the dropdown lists real contest *events*, and a
+student is correctly matched regardless of which division they landed in.
+"Rating before" for a student's first-ever contest falls back to their
+`initialRating` (CodeChef's starting value, usually 1000) since there's no
+earlier entry to compare against.
+
+This only works with the Parse.bot data source (`lib/parseBotScraper.ts`),
+since it's the one that returns full per-contest history — the direct-scrape
+fallback (`lib/codechefScraper.ts`) only ever extracted the single highest
+rating and doesn't populate `contestHistory`.
 
 ## Data source: Parse.bot's CodeChef API
 
@@ -213,10 +242,11 @@ pages/
   api/fetch-batch.ts   — server-side fetch endpoint (concurrency, retries, backoff)
 components/            — step screens + dashboard widgets
 lib/
-  parseBotScraper.ts   — fetches ratings via the Parse.bot CodeChef API (server-only, current default)
-  codechefScraper.ts   — original direct-scrape implementation (server-only, uses cheerio; kept as a drop-in alternative)
+  parseBotScraper.ts   — fetches ratings + full contest history via the Parse.bot CodeChef API (server-only, current default)
+  codechefScraper.ts   — original direct-scrape implementation (server-only, uses cheerio; kept as a drop-in alternative; no contest history)
+  contestAnalysis.ts    — groups multi-division contests into one event and computes gained/lost/didn't-play
   handleUtils.ts        — handle cleaning/validation (safe on client + server)
-  excelIO.ts             — reading the upload, writing both export workbooks
+  excelIO.ts             — reading the upload, writing all three export workbooks
   universityMap.ts       — curated alias dictionary + fuzzy clustering fallback
   stats.ts                — batch/university/leaderboard/summary aggregation
   starTier.ts, tierColors.ts — CodeChef's star-band rules and matching colors

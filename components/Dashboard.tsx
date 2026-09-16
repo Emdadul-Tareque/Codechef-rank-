@@ -10,6 +10,7 @@ import BreakdownTable from '@/components/dashboard/BreakdownTable';
 import LeaderboardTable from '@/components/dashboard/LeaderboardTable';
 import DataQualityPanel from '@/components/dashboard/DataQualityPanel';
 import FetchProgressBar from '@/components/dashboard/FetchProgressBar';
+import ContestAnalysis from '@/components/dashboard/ContestAnalysis';
 
 interface FetchCounts {
   ok: number;
@@ -140,6 +141,8 @@ export default function Dashboard({
       </div>
 
       <LeaderboardTable records={leaderboard} />
+
+      <ContestAnalysis records={records} />
 
       <DataQualityPanel records={records} summary={summary} onRetry={onRetryHandles} retrying={retrying} />
     </div>

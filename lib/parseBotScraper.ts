@@ -1,6 +1,10 @@
-import { CodeChefResult, FetchStatus } from './types';
+import { CodeChefResult, ContestHistoryEntry, FetchStatus } from './types';
 import { isPlausibleHandle } from './handleUtils';
 import { starsForRating } from './starTier';
+
+// Bounds worst-case localStorage size (this history is cached per-handle) —
+// generous enough that no realistic student's real contest count gets truncated.
+const MAX_HISTORY_ENTRIES = 80;
 
 // Fixed per this Parse.bot marketplace API instance
 // (https://parse.bot/marketplace/57b88850-0922-4fec-9b43-39f9fa21bd9b/codechef-com-api).
@@ -25,6 +29,11 @@ interface ParseBotUserData {
     all?: ParseBotRatingEntry[];
     all_old?: ParseBotRatingEntry[];
     dsa_monday?: ParseBotRatingEntry[]; // separate contest track — deliberately excluded from "Max Rank"
+  };
+  user_initial_ratings?: {
+    all?: number;
+    all_old?: number;
+    dsa_monday?: number;
   };
 }
 
@@ -152,7 +161,7 @@ export async function fetchCodeChefProfile(
   }
 
   const ratings = entries
-    .map((e) => ({ rating: parseInt(e.rating, 10), end_date: e.end_date }))
+    .map((e) => ({ rating: parseInt(e.rating, 10), end_date: e.end_date, code: e.code, name: e.name }))
     .filter((e) => Number.isFinite(e.rating));
 
   if (ratings.length === 0) {
@@ -160,9 +169,20 @@ export async function fetchCodeChefProfile(
   }
 
   const highestRating = Math.max(...ratings.map((r) => r.rating));
-  // Most recent contest by end_date = current rating (don't trust array order).
+  // Chronological order (ascending) — needed both for "current = most recent"
+  // and for Contest Analysis to know each contest's *preceding* rating.
   const sortedByDate = [...ratings].sort((a, b) => (a.end_date < b.end_date ? -1 : a.end_date > b.end_date ? 1 : 0));
   const currentRating = sortedByDate[sortedByDate.length - 1].rating;
+
+  const contestHistory: ContestHistoryEntry[] = sortedByDate.slice(-MAX_HISTORY_ENTRIES).map((e) => ({
+    code: e.code,
+    name: e.name,
+    rating: e.rating,
+    end_date: e.end_date,
+  }));
+
+  const initialRatingRaw = json.data.user_initial_ratings?.all;
+  const initialRating = typeof initialRatingRaw === 'number' ? initialRatingRaw : null;
 
   return {
     handle,
@@ -172,5 +192,7 @@ export async function fetchCodeChefProfile(
     stars: starsForRating(highestRating),
     countryName: null, // not exposed by this endpoint
     note: '',
+    contestHistory,
+    initialRating,
   };
 }
