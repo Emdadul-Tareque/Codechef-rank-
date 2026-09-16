@@ -17,8 +17,8 @@ export default function SummaryCards({ summary }: { summary: OverallSummary }) {
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
       {cards.map((c) => (
         <div key={c.label} className="card p-4">
-          <div className="font-mono text-2xl font-semibold text-gray-900">{c.value}</div>
-          <div className="mt-1 text-xs text-gray-500">{c.label}</div>
+          <div className="font-mono text-2xl font-semibold text-slate-100">{c.value}</div>
+          <div className="mt-1 text-xs text-slate-400">{c.label}</div>
         </div>
       ))}
     </div>

@@ -12,7 +12,7 @@ interface Row {
 export default function BreakdownTable({ title, rows }: { title: string; rows: Row[] }) {
   return (
     <div className="card p-5">
-      <h3 className="mb-3 text-sm font-semibold text-gray-800">{title}</h3>
+      <h3 className="mb-3 text-sm font-semibold text-slate-200">{title}</h3>
       <div className="scroll-box">
         <table className="data-table">
           <thead>
@@ -31,7 +31,7 @@ export default function BreakdownTable({ title, rows }: { title: string; rows: R
           <tbody>
             {rows.map((r) => (
               <tr key={r.label}>
-                <td className="max-w-xs truncate font-medium text-gray-800">{r.label}</td>
+                <td className="max-w-xs truncate font-medium text-slate-200">{r.label}</td>
                 <td className="text-right font-mono">{r.total}</td>
                 <td className="text-right font-mono">{r.foundCount}</td>
                 {TIER_ORDER.map((t) => (

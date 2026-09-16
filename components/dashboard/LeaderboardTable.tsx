@@ -5,7 +5,7 @@ import TierBadge from '@/components/TierBadge';
 export default function LeaderboardTable({ records }: { records: JoinedRecord[] }) {
   return (
     <div className="card p-5">
-      <h3 className="mb-3 text-sm font-semibold text-gray-800">Top performers</h3>
+      <h3 className="mb-3 text-sm font-semibold text-slate-200">Top performers</h3>
       <div className="scroll-box">
         <table className="data-table">
           <thead>
@@ -23,9 +23,9 @@ export default function LeaderboardTable({ records }: { records: JoinedRecord[] 
             {records.map((r, i) => (
               <tr key={r.handle + i}>
                 <td className="font-mono">{i + 1}</td>
-                <td className="font-medium text-gray-800">{r.name}</td>
+                <td className="font-medium text-slate-200">{r.name}</td>
                 <td>{r.batch}</td>
-                <td className="font-mono text-brand-700">
+                <td className="font-mono text-brand-300">
                   <a
                     href={`https://www.codechef.com/users/${encodeURIComponent(r.handle)}`}
                     target="_blank"

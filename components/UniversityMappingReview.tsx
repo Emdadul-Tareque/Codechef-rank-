@@ -21,18 +21,18 @@ export default function UniversityMappingReview({ initial, onConfirm, onBack }: 
   return (
     <div className="mx-auto max-w-4xl">
       <div className="card p-6">
-        <h2 className="text-lg font-semibold text-gray-900">Review university name mapping</h2>
-        <p className="mt-1 text-sm text-gray-500">
+        <h2 className="text-lg font-semibold text-slate-100">Review university name mapping</h2>
+        <p className="mt-1 text-sm text-slate-400">
           {sorted.length} distinct spellings were found and grouped into <strong>{sorted.length}</strong> buckets
           below. Rename a bucket&apos;s display name, or merge two buckets that are really the same school.
         </p>
 
         {multiVariant.length > 0 && (
           <>
-            <h3 className="mb-2 mt-6 text-sm font-semibold text-gray-700">
+            <h3 className="mb-2 mt-6 text-sm font-semibold text-slate-300">
               Grouped automatically ({multiVariant.length})
             </h3>
-            <div className="scroll-box divide-y divide-gray-100">
+            <div className="scroll-box divide-y divide-slate-800">
               {multiVariant.map((c) => (
                 <div key={c.canonical} className="flex items-start justify-between gap-4 p-3">
                   <div className="min-w-0 flex-1">
@@ -42,7 +42,7 @@ export default function UniversityMappingReview({ initial, onConfirm, onBack }: 
                           autoFocus
                           value={editValue}
                           onChange={(e) => setEditValue(e.target.value)}
-                          className="w-full rounded border border-gray-300 px-2 py-1 text-sm"
+                          className="w-full rounded border border-slate-600 bg-slate-800 px-2 py-1 text-sm text-slate-100"
                         />
                         <button
                           className="shrink-0 rounded bg-brand-600 px-2 py-1 text-xs font-medium text-white"
@@ -55,14 +55,14 @@ export default function UniversityMappingReview({ initial, onConfirm, onBack }: 
                         </button>
                       </div>
                     ) : (
-                      <p className="truncate font-medium text-gray-900">
+                      <p className="truncate font-medium text-slate-100">
                         {c.canonical}{' '}
-                        <span className="font-normal text-gray-400">
+                        <span className="font-normal text-slate-500">
                           ({c.count} student{c.count === 1 ? '' : 's'})
                         </span>
                       </p>
                     )}
-                    <p className="mt-1 truncate text-xs text-gray-500">
+                    <p className="mt-1 truncate text-xs text-slate-400">
                       as typed: {c.variants.slice(0, 6).join(' · ')}
                       {c.variants.length > 6 ? ` · +${c.variants.length - 6} more` : ''}
                     </p>
@@ -84,13 +84,13 @@ export default function UniversityMappingReview({ initial, onConfirm, onBack }: 
 
         {singleVariant.length > 0 && (
           <>
-            <h3 className="mb-2 mt-6 text-sm font-semibold text-gray-700">
+            <h3 className="mb-2 mt-6 text-sm font-semibold text-slate-300">
               Only one spelling seen ({singleVariant.length}) — likely fine as-is, or merge below if it&apos;s a
               duplicate of another entry
             </h3>
-            <div className="flex max-h-40 flex-wrap gap-2 overflow-auto rounded-lg border border-gray-100 p-3">
+            <div className="flex max-h-40 flex-wrap gap-2 overflow-auto rounded-lg border border-slate-800 p-3">
               {singleVariant.map((c) => (
-                <span key={c.canonical} className="rounded-full bg-gray-100 px-2.5 py-1 text-xs text-gray-700">
+                <span key={c.canonical} className="rounded-full bg-slate-800 px-2.5 py-1 text-xs text-slate-300">
                   {c.canonical} ({c.count})
                 </span>
               ))}
@@ -98,11 +98,11 @@ export default function UniversityMappingReview({ initial, onConfirm, onBack }: 
           </>
         )}
 
-        <div className="mt-6 rounded-lg border border-gray-200 p-4">
-          <p className="mb-2 text-sm font-semibold text-gray-700">Merge two buckets manually</p>
+        <div className="mt-6 rounded-lg border border-slate-700 p-4">
+          <p className="mb-2 text-sm font-semibold text-slate-300">Merge two buckets manually</p>
           <div className="flex flex-wrap items-center gap-2">
             <select
-              className="rounded-md border border-gray-300 px-2 py-1.5 text-sm"
+              className="rounded-md border border-slate-600 bg-slate-800 px-2 py-1.5 text-sm text-slate-100"
               value={mergeSource}
               onChange={(e) => setMergeSource(e.target.value)}
             >
@@ -113,9 +113,9 @@ export default function UniversityMappingReview({ initial, onConfirm, onBack }: 
                 </option>
               ))}
             </select>
-            <span className="text-sm text-gray-400">merge into</span>
+            <span className="text-sm text-slate-500">merge into</span>
             <select
-              className="rounded-md border border-gray-300 px-2 py-1.5 text-sm"
+              className="rounded-md border border-slate-600 bg-slate-800 px-2 py-1.5 text-sm text-slate-100"
               value={mergeTarget}
               onChange={(e) => setMergeTarget(e.target.value)}
             >
@@ -133,7 +133,7 @@ export default function UniversityMappingReview({ initial, onConfirm, onBack }: 
                 setMergeSource('');
                 setMergeTarget('');
               }}
-              className="rounded-md bg-gray-800 px-3 py-1.5 text-sm font-medium text-white disabled:cursor-not-allowed disabled:bg-gray-300"
+              className="rounded-md bg-slate-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-600 disabled:cursor-not-allowed disabled:bg-slate-800 disabled:text-slate-500"
             >
               Merge
             </button>
@@ -141,12 +141,12 @@ export default function UniversityMappingReview({ initial, onConfirm, onBack }: 
         </div>
 
         <div className="mt-6 flex justify-between">
-          <button onClick={onBack} className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50">
+          <button onClick={onBack} className="rounded-md border border-slate-600 px-4 py-2 text-sm font-medium text-slate-300 hover:bg-slate-800">
             Back
           </button>
           <button
             onClick={() => onConfirm(result)}
-            className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
+            className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-500"
           >
             Looks good — start fetching CodeChef data
           </button>

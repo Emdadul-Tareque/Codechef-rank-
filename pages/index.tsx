@@ -396,10 +396,10 @@ export default function Home() {
         <title>Phitron · CodeChef Performance Dashboard</title>
         <meta name="description" content="Bulk CodeChef rating lookup and batch/university leaderboard for Phitron." />
       </Head>
-      <div className="min-h-screen bg-[#f6f7fb] px-4 py-10">
+      <div className="min-h-screen bg-slate-950 px-4 py-10">
         <header className="mx-auto mb-8 max-w-6xl">
-          <p className="text-xs font-medium uppercase tracking-wide text-brand-500">Phitron</p>
-          <h1 className="text-2xl font-bold text-gray-900">CodeChef Performance Dashboard</h1>
+          <p className="text-xs font-medium uppercase tracking-wide text-brand-400">Phitron</p>
+          <h1 className="text-2xl font-bold text-slate-100">CodeChef Performance Dashboard</h1>
         </header>
 
         {step === 'upload' && (

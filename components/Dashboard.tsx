@@ -61,19 +61,19 @@ export default function Dashboard({
     <div className="mx-auto max-w-6xl space-y-6 pb-16">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold text-gray-900">CodeChef Performance Dashboard</h1>
-          <p className="text-sm text-gray-500">Phitron student roster — batch &amp; university breakdown by CodeChef rank</p>
+          <h1 className="text-xl font-semibold text-slate-100">CodeChef Performance Dashboard</h1>
+          <p className="text-sm text-slate-400">Phitron student roster — batch &amp; university breakdown by CodeChef rank</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <button
             onClick={onEditUniversityMapping}
-            className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            className="rounded-md border border-slate-600 bg-slate-800 px-3 py-2 text-sm font-medium text-slate-300 hover:bg-slate-700"
           >
             Edit university mapping
           </button>
           <button
             onClick={() => exportResultWorkbook(records)}
-            className="rounded-md border border-brand-200 bg-brand-50 px-3 py-2 text-sm font-medium text-brand-700 hover:bg-brand-100"
+            className="rounded-md border border-brand-500/30 bg-brand-500/10 px-3 py-2 text-sm font-medium text-brand-300 hover:bg-brand-500/20"
           >
             Download Result Excel
           </button>
@@ -88,13 +88,13 @@ export default function Dashboard({
                 tierOrder: TIER_ORDER,
               })
             }
-            className="rounded-md bg-brand-600 px-3 py-2 text-sm font-medium text-white hover:bg-brand-700"
+            className="rounded-md bg-brand-600 px-3 py-2 text-sm font-medium text-white hover:bg-brand-500"
           >
             Download Full Report Excel
           </button>
           <button
             onClick={onStartOver}
-            className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-500 hover:bg-gray-50"
+            className="rounded-md border border-slate-600 bg-slate-800 px-3 py-2 text-sm font-medium text-slate-400 hover:bg-slate-700"
           >
             Start over
           </button>

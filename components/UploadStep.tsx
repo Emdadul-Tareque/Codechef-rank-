@@ -44,21 +44,21 @@ export default function UploadStep({ onLoaded, savedProgressBanner, onResume, on
   return (
     <div className="mx-auto max-w-2xl">
       {savedProgressBanner && (
-        <div className="card mb-6 flex items-center justify-between gap-4 border-brand-200 bg-brand-50 p-4">
-          <div className="text-sm text-brand-900">
-            <strong>Unfinished run found</strong> — {savedProgressBanner.count} of{' '}
+        <div className="card mb-6 flex items-center justify-between gap-4 border-brand-500/30 bg-brand-500/10 p-4">
+          <div className="text-sm text-slate-200">
+            <strong className="text-white">Unfinished run found</strong> — {savedProgressBanner.count} of{' '}
             {savedProgressBanner.total} handles were already fetched last time.
           </div>
           <div className="flex shrink-0 gap-2">
             <button
               onClick={onResume}
-              className="rounded-md bg-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-700"
+              className="rounded-md bg-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-500"
             >
               Resume
             </button>
             <button
               onClick={onDiscardSaved}
-              className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-50"
+              className="rounded-md border border-slate-700 px-3 py-1.5 text-sm font-medium text-slate-300 hover:bg-slate-800"
             >
               Discard
             </button>
@@ -79,20 +79,20 @@ export default function UploadStep({ onLoaded, savedProgressBanner, onResume, on
         }}
         onClick={() => inputRef.current?.click()}
         className={`card flex cursor-pointer flex-col items-center justify-center gap-3 border-2 border-dashed p-14 text-center transition-colors ${
-          dragActive ? 'border-brand-500 bg-brand-50' : 'border-gray-300 hover:border-brand-300'
+          dragActive ? 'border-brand-400 bg-brand-500/10' : 'border-slate-700 hover:border-brand-500/60'
         }`}
       >
-        <div className="rounded-full bg-brand-50 p-3">
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#3550f5" strokeWidth="1.8">
+        <div className="rounded-full bg-brand-500/15 p-3">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#8fa8ff" strokeWidth="1.8">
             <path d="M12 16V4M12 4l-4 4M12 4l4 4" strokeLinecap="round" strokeLinejoin="round" />
             <path d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         </div>
         <div>
-          <p className="font-medium text-gray-800">
+          <p className="font-medium text-slate-100">
             {loading ? 'Reading file…' : 'Drop your roster here, or click to browse'}
           </p>
-          <p className="mt-1 text-sm text-gray-500">.xlsx, .xls, or .csv — Name, Batch, CodeChef Handle, University/Institute</p>
+          <p className="mt-1 text-sm text-slate-400">.xlsx, .xls, or .csv — Name, Batch, CodeChef Handle, University/Institute</p>
         </div>
         <input
           ref={inputRef}
@@ -104,10 +104,10 @@ export default function UploadStep({ onLoaded, savedProgressBanner, onResume, on
       </div>
 
       {error && (
-        <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>
+        <div className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-400">{error}</div>
       )}
 
-      <p className="mt-6 text-center text-xs text-gray-400">
+      <p className="mt-6 text-center text-xs text-slate-500">
         Nothing leaves your browser except CodeChef profile requests, which run through this app&apos;s own server.
       </p>
     </div>

@@ -1,14 +1,17 @@
 // Mirrors CodeChef's own star-rating colors so the dashboard's palette reads
 // as "native" to the subject matter rather than an arbitrary chart theme.
+// Brightened relative to CodeChef's own (light-background) hues so each tier
+// still reads clearly as text/fill color against this app's dark surfaces —
+// a color tuned for a white page goes muddy on a dark card.
 export const TIER_COLORS: Record<string, string> = {
-  '1\u2605': '#6b7280', // grey
-  '2\u2605': '#1f9d55', // green
-  '3\u2605': '#2f6fd6', // blue
-  '4\u2605': '#7b3fa0', // violet
-  '5\u2605': '#caa000', // yellow/gold
-  '6\u2605': '#e07a1f', // orange
-  '7\u2605': '#d0332c', // red
-  Unrated: '#c7cad4', // neutral
+  '1\u2605': '#94a3b8', // slate — grey tier
+  '2\u2605': '#34d399', // brightened green
+  '3\u2605': '#60a5fa', // brightened blue
+  '4\u2605': '#c084fc', // brightened violet
+  '5\u2605': '#fbbf24', // brightened gold
+  '6\u2605': '#fb923c', // brightened orange
+  '7\u2605': '#f87171', // brightened red
+  Unrated: '#64748b', // muted slate, recedes against dark bg
 };
 
 export function tierColor(tier: string): string {

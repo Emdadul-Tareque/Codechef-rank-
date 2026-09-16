@@ -37,8 +37,8 @@ export default function ColumnMappingStep({ sheet, initialMapping, onConfirm, on
   return (
     <div className="mx-auto max-w-4xl">
       <div className="card p-6">
-        <h2 className="text-lg font-semibold text-gray-900">Confirm which column is which</h2>
-        <p className="mt-1 text-sm text-gray-500">
+        <h2 className="text-lg font-semibold text-slate-100">Confirm which column is which</h2>
+        <p className="mt-1 text-sm text-slate-400">
           Detected automatically from &quot;{sheet.sheetName}&quot; ({sheet.rows.length} rows). Override anything
           that&apos;s wrong.
         </p>
@@ -46,14 +46,14 @@ export default function ColumnMappingStep({ sheet, initialMapping, onConfirm, on
         <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
           {FIELD_LABELS.map((f) => (
             <label key={f.key} className="block">
-              <span className="text-sm font-medium text-gray-700">
+              <span className="text-sm font-medium text-slate-300">
                 {f.label} {f.required && <span className="text-red-500">*</span>}
               </span>
               <select
-                className={`mt-1 w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-1 ${
+                className={`mt-1 w-full rounded-md border bg-slate-800 px-3 py-2 text-sm text-slate-100 focus:outline-none focus:ring-1 ${
                   mapping[f.key] !== undefined && (indexToFields.get(mapping[f.key]!)?.length ?? 0) > 1
-                    ? 'border-red-300 focus:border-red-500 focus:ring-red-500'
-                    : 'border-gray-300 focus:border-brand-500 focus:ring-brand-500'
+                    ? 'border-red-500/50 focus:border-red-400 focus:ring-red-400'
+                    : 'border-slate-600 focus:border-brand-500 focus:ring-brand-500'
                 }`}
                 value={mapping[f.key] ?? ''}
                 onChange={(e) =>
@@ -79,7 +79,7 @@ export default function ColumnMappingStep({ sheet, initialMapping, onConfirm, on
         </div>
 
         <div className="mt-6">
-          <p className="mb-2 text-sm font-medium text-gray-700">Preview (first 5 rows)</p>
+          <p className="mb-2 text-sm font-medium text-slate-300">Preview (first 5 rows)</p>
           <div className="scroll-box">
             <table className="data-table">
               <thead>
@@ -100,14 +100,14 @@ export default function ColumnMappingStep({ sheet, initialMapping, onConfirm, on
               </tbody>
             </table>
           </div>
-          <p className="mt-2 text-xs text-gray-400">
+          <p className="mt-2 text-xs text-slate-500">
             Double-check this preview before continuing — if a column looks wrong here (e.g. Name showing numbers),
             fix the dropdown above rather than continuing and fixing it later.
           </p>
         </div>
 
         {hasConflicts && (
-          <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+          <div className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">
             <strong>Same column picked for more than one field:</strong>{' '}
             {conflicts
               .map(([idx, fields]) => `"${sheet.headers[idx] || `column ${idx + 1}`}" → ${fields.join(' & ')}`)
@@ -117,19 +117,19 @@ export default function ColumnMappingStep({ sheet, initialMapping, onConfirm, on
         )}
 
         {!hasConflicts && missing.length > 0 && (
-          <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+          <div className="mt-4 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-300">
             Still need: {missing.map((m) => m.label).join(', ')}
           </div>
         )}
 
         <div className="mt-6 flex justify-between">
-          <button onClick={onBack} className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50">
+          <button onClick={onBack} className="rounded-md border border-slate-600 px-4 py-2 text-sm font-medium text-slate-300 hover:bg-slate-800">
             Back
           </button>
           <button
             disabled={missing.length > 0 || hasConflicts}
             onClick={() => onConfirm(mapping)}
-            className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:bg-gray-300"
+            className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-500 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-500"
           >
             Continue
           </button>
