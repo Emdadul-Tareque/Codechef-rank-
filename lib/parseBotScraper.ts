@@ -161,7 +161,7 @@ export async function fetchCodeChefProfile(
   }
 
   const ratings = entries
-    .map((e) => ({ rating: parseInt(e.rating, 10), end_date: e.end_date, code: e.code, name: e.name }))
+    .map((e) => ({ rating: parseInt(e.rating, 10), rank: parseInt(e.rank, 10), end_date: e.end_date, code: e.code, name: e.name }))
     .filter((e) => Number.isFinite(e.rating));
 
   if (ratings.length === 0) {
@@ -170,7 +170,7 @@ export async function fetchCodeChefProfile(
 
   const highestRating = Math.max(...ratings.map((r) => r.rating));
   // Chronological order (ascending) — needed both for "current = most recent"
-  // and for Contest Analysis to know each contest's *preceding* rating.
+  // and for Contest Analysis to know each contest's *preceding* rating/rank.
   const sortedByDate = [...ratings].sort((a, b) => (a.end_date < b.end_date ? -1 : a.end_date > b.end_date ? 1 : 0));
   const currentRating = sortedByDate[sortedByDate.length - 1].rating;
 
@@ -178,6 +178,7 @@ export async function fetchCodeChefProfile(
     code: e.code,
     name: e.name,
     rating: e.rating,
+    rank: Number.isFinite(e.rank) ? e.rank : -1, // -1 = rank wasn't a parseable number for this entry
     end_date: e.end_date,
   }));
 

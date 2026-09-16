@@ -2,6 +2,7 @@ import * as XLSX from 'xlsx';
 import { cleanHandle, normalizeHeader } from './handleUtils';
 import { JoinedRecord, SourceRow, UniversityCluster } from './types';
 import { tierLabelForResult } from './starTier';
+import { ContestParticipant } from './contestAnalysis';
 
 // ---------------------------------------------------------------------------
 // Reading the uploaded roster
@@ -71,23 +72,31 @@ function diceSimilarity(a: string, b: string): number {
 }
 
 interface FieldSpec {
-  key: 'name' | 'batch' | 'handle' | 'university';
+  key: 'batch' | 'name' | 'email' | 'phone' | 'university' | 'handle';
   substrings: string[]; // normalized substrings that count as a confident match
   fuzzyTargets: string[]; // normalized words to fuzzy-match against as a fallback
 }
 
+// Order matches the roster template: Batch, Name, Email, Phone Number,
+// Institute Name, CodeChef Handle.
 const FIELD_SPECS: FieldSpec[] = [
-  { key: 'name', substrings: ['name'], fuzzyTargets: ['name'] },
   { key: 'batch', substrings: ['batch'], fuzzyTargets: ['batch'] },
+  { key: 'name', substrings: ['name'], fuzzyTargets: ['name'] },
+  { key: 'email', substrings: ['email', 'mail'], fuzzyTargets: ['email', 'emailaddress'] },
+  {
+    key: 'phone',
+    substrings: ['phone', 'mobile', 'cell', 'contactno', 'contactnumber'],
+    fuzzyTargets: ['phonenumber', 'mobilenumber', 'contact'],
+  },
+  {
+    key: 'university',
+    substrings: ['institut', 'univers', 'college'],
+    fuzzyTargets: ['institutename', 'university', 'institution'],
+  },
   {
     key: 'handle',
     substrings: ['codechef', 'handle', 'ccid', 'ccprofile'],
     fuzzyTargets: ['codechefhandle', 'handle'],
-  },
-  {
-    key: 'university',
-    substrings: ['univers', 'institut', 'college'],
-    fuzzyTargets: ['university', 'institute', 'institution'],
   },
 ];
 
@@ -134,10 +143,12 @@ export function buildSourceRows(sheet: RawSheet, mapping: ColumnMapping): {
   sheet.rows.forEach((r, i) => {
     const name = mapping.name !== undefined ? (r[mapping.name] || '').trim() : '';
     const batch = mapping.batch !== undefined ? (r[mapping.batch] || '').trim() : '';
+    const email = mapping.email !== undefined ? (r[mapping.email] || '').trim() : '';
+    const phone = mapping.phone !== undefined ? (r[mapping.phone] || '').trim() : '';
     const handleRaw = mapping.handle !== undefined ? (r[mapping.handle] || '').trim() : '';
     const university = mapping.university !== undefined ? (r[mapping.university] || '').trim() : '';
 
-    const allBlank = !name && !batch && !handleRaw && !university;
+    const allBlank = !name && !batch && !email && !phone && !handleRaw && !university;
     if (allBlank) {
       skippedBlankRows++;
       return;
@@ -147,6 +158,8 @@ export function buildSourceRows(sheet: RawSheet, mapping: ColumnMapping): {
       rowIndex: i + 2, // +1 for header row, +1 for 1-based numbering
       name: name || 'Unknown',
       batch: batch || 'Unknown',
+      email, // left blank rather than "Unknown" — this is contact info, not a grouping category
+      phone,
       handleRaw,
       handle: cleanHandle(handleRaw),
       university: university || 'Unknown',
@@ -173,13 +186,25 @@ const STATUS_LABEL: Record<string, string> = {
   fetching: 'Fetching',
 };
 
+// The six roster-identity columns every export leads with, in the order the
+// roster template itself uses: Batch, Name, Email, Phone Number, Institute
+// Name, CodeChef Handle.
+function identityColumns(r: JoinedRecord) {
+  return {
+    Batch: r.batch,
+    Name: r.name,
+    Email: r.email,
+    'Phone Number': r.phone,
+    'Institute Name': r.universityNormalized,
+    'CodeChef Handle': r.handle || r.handleRaw,
+  };
+}
+const IDENTITY_COL_WIDTHS = [{ wch: 12 }, { wch: 24 }, { wch: 28 }, { wch: 16 }, { wch: 42 }, { wch: 20 }];
+
 export function exportResultWorkbook(records: JoinedRecord[], filename = 'codechef_ratings_result.xlsx') {
   const data = records.map((r) => ({
-    Name: r.name,
-    Batch: r.batch,
-    'CodeChef Handle': r.handle || r.handleRaw,
+    ...identityColumns(r),
     'Max Rank': r.result.highestRating ?? '',
-    'University/Institute': r.universityNormalized,
     'Current Rating': r.result.currentRating ?? '',
     'Star Tier': tierLabelForResult(r.result.highestRating),
     Status: STATUS_LABEL[r.result.status] || r.result.status,
@@ -187,81 +212,113 @@ export function exportResultWorkbook(records: JoinedRecord[], filename = 'codech
   }));
 
   const ws = XLSX.utils.json_to_sheet(data);
-  ws['!cols'] = [
-    { wch: 24 }, // Name
-    { wch: 12 }, // Batch
-    { wch: 20 }, // Handle
-    { wch: 10 }, // Max Rank
-    { wch: 42 }, // University
-    { wch: 14 }, // Current Rating
-    { wch: 10 }, // Star Tier
-    { wch: 26 }, // Status
-    { wch: 45 }, // Notes
-  ];
+  ws['!cols'] = [...IDENTITY_COL_WIDTHS, { wch: 10 }, { wch: 14 }, { wch: 10 }, { wch: 26 }, { wch: 45 }];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Results');
   XLSX.writeFile(wb, filename);
 }
 
+// ---------------------------------------------------------------------------
+// Contest breakdown export — separate sheet per tab (Increased / Decreased /
+// Did Not Participate / Summary), each carrying the full roster identity
+// columns plus rating and per-contest-rank before/after.
+// ---------------------------------------------------------------------------
+
+export interface ContestParticipantRow extends ContestParticipant {}
+
+function contestParticipantRow(p: ContestParticipantRow) {
+  return {
+    Batch: p.batch,
+    Name: p.name,
+    Email: p.email,
+    'Phone Number': p.phone,
+    'Institute Name': p.university,
+    'CodeChef Handle': p.handle,
+    'Contest Played': p.contestName,
+    'Rating Before': p.ratingBefore,
+    'Rating After': p.ratingAfter,
+    'Rating Change': p.delta,
+    'Rank Before': p.rankBefore ?? 'N/A (first contest)',
+    'Rank After': p.rankAfter,
+    'Rank Improved?': p.rankImproved === null ? 'N/A (first contest)' : p.rankImproved ? 'Yes' : 'No',
+  };
+}
+const PARTICIPANT_COL_WIDTHS = [
+  { wch: 12 },
+  { wch: 24 },
+  { wch: 28 },
+  { wch: 16 },
+  { wch: 42 },
+  { wch: 20 },
+  { wch: 32 },
+  { wch: 12 },
+  { wch: 12 },
+  { wch: 12 },
+  { wch: 16 },
+  { wch: 12 },
+  { wch: 16 },
+];
+
 export function exportContestBreakdownWorkbook(breakdown: {
   eventLabel: string;
-  increased: Array<{ name: string; batch: string; university: string; handle: string; contestName: string; ratingBefore: number; ratingAfter: number; delta: number }>;
-  decreased: Array<{ name: string; batch: string; university: string; handle: string; contestName: string; ratingBefore: number; ratingAfter: number; delta: number }>;
-  unchanged: Array<{ name: string; batch: string; university: string; handle: string; contestName: string; ratingBefore: number; ratingAfter: number; delta: number }>;
+  increased: ContestParticipantRow[];
+  decreased: ContestParticipantRow[];
+  unchanged: ContestParticipantRow[];
   didNotParticipate: JoinedRecord[];
   unresolved: JoinedRecord[];
 }) {
   const wb = XLSX.utils.book_new();
 
-  const toRow = (p: { name: string; batch: string; university: string; handle: string; contestName: string; ratingBefore: number; ratingAfter: number; delta: number }, change: string) => ({
-    Name: p.name,
-    Batch: p.batch,
-    'University/Institute': p.university,
-    'CodeChef Handle': p.handle,
-    'Contest Played': p.contestName,
-    'Rating Before': p.ratingBefore,
-    'Rating After': p.ratingAfter,
-    Change: p.delta,
-    Result: change,
-  });
-
-  const rows = [
-    ...breakdown.increased.map((p) => toRow(p, 'Increased')),
-    ...breakdown.decreased.map((p) => toRow(p, 'Decreased')),
-    ...breakdown.unchanged.map((p) => toRow(p, 'Unchanged')),
+  // --- Summary (always first sheet) ---
+  const totalConsidered =
+    breakdown.increased.length +
+    breakdown.decreased.length +
+    breakdown.unchanged.length +
+    breakdown.didNotParticipate.length;
+  const summaryRows = [
+    { Metric: 'Contest', Value: breakdown.eventLabel || '(unnamed)' },
+    { Metric: 'Rating increased', Value: breakdown.increased.length },
+    { Metric: 'Rating decreased', Value: breakdown.decreased.length },
+    { Metric: 'Rating unchanged', Value: breakdown.unchanged.length },
+    { Metric: 'Did not participate', Value: breakdown.didNotParticipate.length },
+    { Metric: 'Total students considered', Value: totalConsidered },
+    { Metric: 'Excluded — CodeChef data not resolved yet', Value: breakdown.unresolved.length },
   ];
-  const wsMain = XLSX.utils.json_to_sheet(rows);
-  wsMain['!cols'] = [
-    { wch: 24 },
-    { wch: 12 },
-    { wch: 40 },
-    { wch: 20 },
-    { wch: 32 },
-    { wch: 12 },
-    { wch: 12 },
-    { wch: 10 },
-    { wch: 12 },
-  ];
-  XLSX.utils.book_append_sheet(wb, wsMain, 'Participated');
+  const wsSummary = XLSX.utils.json_to_sheet(summaryRows);
+  wsSummary['!cols'] = [{ wch: 38 }, { wch: 40 }];
+  XLSX.utils.book_append_sheet(wb, wsSummary, 'Summary');
 
-  const notPlayedRows = breakdown.didNotParticipate.map((r) => ({
-    Name: r.name,
-    Batch: r.batch,
-    'University/Institute': r.universityNormalized,
-    'CodeChef Handle': r.handle,
-  }));
+  // --- Increased ---
+  const wsInc = XLSX.utils.json_to_sheet(breakdown.increased.map(contestParticipantRow));
+  wsInc['!cols'] = PARTICIPANT_COL_WIDTHS;
+  XLSX.utils.book_append_sheet(wb, wsInc, 'Rating Increased');
+
+  // --- Decreased ---
+  const wsDec = XLSX.utils.json_to_sheet(breakdown.decreased.map(contestParticipantRow));
+  wsDec['!cols'] = PARTICIPANT_COL_WIDTHS;
+  XLSX.utils.book_append_sheet(wb, wsDec, 'Rating Decreased');
+
+  // --- Unchanged (kept as its own small sheet rather than folded into either of the above) ---
+  if (breakdown.unchanged.length > 0) {
+    const wsUnch = XLSX.utils.json_to_sheet(breakdown.unchanged.map(contestParticipantRow));
+    wsUnch['!cols'] = PARTICIPANT_COL_WIDTHS;
+    XLSX.utils.book_append_sheet(wb, wsUnch, 'Rating Unchanged');
+  }
+
+  // --- Did Not Participate — full identity info, per the brief ---
+  const notPlayedRows = breakdown.didNotParticipate.map((r) => identityColumns(r));
   const wsNotPlayed = XLSX.utils.json_to_sheet(notPlayedRows);
+  wsNotPlayed['!cols'] = IDENTITY_COL_WIDTHS;
   XLSX.utils.book_append_sheet(wb, wsNotPlayed, 'Did Not Participate');
 
+  // --- Unresolved (bonus — not requested, but avoids silently dropping students) ---
   if (breakdown.unresolved.length > 0) {
     const unresolvedRows = breakdown.unresolved.map((r) => ({
-      Name: r.name,
-      Batch: r.batch,
-      'University/Institute': r.universityNormalized,
-      'CodeChef Handle': r.handle,
+      ...identityColumns(r),
       Status: STATUS_LABEL[r.result.status] || r.result.status,
     }));
     const wsUnresolved = XLSX.utils.json_to_sheet(unresolvedRows);
+    wsUnresolved['!cols'] = [...IDENTITY_COL_WIDTHS, { wch: 26 }];
     XLSX.utils.book_append_sheet(wb, wsUnresolved, 'Unresolved (Not Fetched Yet)');
   }
 
@@ -335,7 +392,7 @@ export function exportFullReportWorkbook(params: {
   // --- University breakdown (pivot: university x star tier) ---
   const uniRows = universityStats.map((u) => {
     const row: Record<string, string | number> = {
-      'University/Institute': u.university,
+      'Institute Name': u.university,
       'Total Students': u.total,
       'Found on CodeChef': u.foundCount,
     };
@@ -360,38 +417,30 @@ export function exportFullReportWorkbook(params: {
   // --- Leaderboard ---
   const leaderRows = leaderboard.map((r, i) => ({
     Rank: i + 1,
-    Name: r.name,
-    Batch: r.batch,
-    'CodeChef Handle': r.handle,
+    ...identityColumns(r),
     'Max Rank': r.result.highestRating,
     'Star Tier': tierLabelForResult(r.result.highestRating),
-    'University/Institute': r.universityNormalized,
   }));
   const wsLeader = XLSX.utils.json_to_sheet(leaderRows);
+  wsLeader['!cols'] = [{ wch: 8 }, ...IDENTITY_COL_WIDTHS, { wch: 10 }, { wch: 10 }];
   XLSX.utils.book_append_sheet(wb, wsLeader, 'Leaderboard (Top Performers)');
 
   // --- Data quality / follow-up list ---
   const issueRows = records
     .filter((r) => r.result.status !== 'ok')
     .map((r) => ({
-      Name: r.name,
-      Batch: r.batch,
-      'CodeChef Handle (as typed)': r.handleRaw,
-      'University/Institute': r.universityNormalized,
+      ...identityColumns(r),
       Status: STATUS_LABEL[r.result.status] || r.result.status,
       Notes: r.result.note,
     }));
   const wsIssues = XLSX.utils.json_to_sheet(issueRows);
-  wsIssues['!cols'] = [{ wch: 24 }, { wch: 12 }, { wch: 24 }, { wch: 40 }, { wch: 28 }, { wch: 50 }];
+  wsIssues['!cols'] = [...IDENTITY_COL_WIDTHS, { wch: 28 }, { wch: 50 }];
   XLSX.utils.book_append_sheet(wb, wsIssues, 'Needs Attention');
 
   // --- Full raw data ---
   const rawRows = records.map((r) => ({
-    Name: r.name,
-    Batch: r.batch,
-    'CodeChef Handle': r.handle,
-    'University (as typed)': r.university,
-    'University (mapped)': r.universityNormalized,
+    ...identityColumns(r),
+    'Institute (as typed)': r.university,
     'Current Rating': r.result.currentRating ?? '',
     'Max Rank': r.result.highestRating ?? '',
     'Star Tier': tierLabelForResult(r.result.highestRating),
@@ -399,6 +448,7 @@ export function exportFullReportWorkbook(params: {
     Notes: r.result.note,
   }));
   const wsRaw = XLSX.utils.json_to_sheet(rawRows);
+  wsRaw['!cols'] = [...IDENTITY_COL_WIDTHS, { wch: 42 }, { wch: 14 }, { wch: 10 }, { wch: 10 }, { wch: 26 }, { wch: 45 }];
   XLSX.utils.book_append_sheet(wb, wsRaw, 'Raw Data');
 
   XLSX.writeFile(wb, params.filename || 'phitron_codechef_full_report.xlsx');

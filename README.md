@@ -1,9 +1,10 @@
 # Phitron CodeChef Performance Dashboard
 
-A self-contained web app: upload a roster (Name, Batch, CodeChef Handle,
-University/Institute), it bulk-fetches each student's CodeChef rating,
-cleans up messy university names, and gives you a batch/university
-dashboard — with everything exportable back to Excel.
+A self-contained web app: upload a roster (Batch, Name, Email, Phone Number,
+Institute Name, CodeChef Handle), it bulk-fetches each student's CodeChef
+rating, cleans up messy university names, and gives you a batch/university
+dashboard plus contest-by-contest gain/loss tracking — with everything
+exportable back to Excel.
 
 No database required. Deploys free on Vercel's Hobby plan (the CodeChef data
 source itself — see below — has its own paid tiers if you outgrow the free
@@ -11,11 +12,15 @@ one).
 
 ## What it does
 
-1. **Upload** an `.xlsx` / `.xls` / `.csv` roster.
-2. **Confirm column mapping** — you point at which column is Name / Batch /
-   CodeChef Handle / University, with sensible auto-detection as a starting
-   point (works even if your headers don't match exactly, e.g. "CC Profile /
-   Handle" or "Codechef Handle" are both recognized).
+1. **Upload** an `.xlsx` / `.xls` / `.csv` roster with these six columns (any
+   header wording/order — auto-detected, confirmed by you in the next step):
+   **Batch, Name, Email, Phone Number, Institute Name, CodeChef Handle**.
+2. **Confirm column mapping** — you point at which sheet column is which of
+   the six fields above, with sensible auto-detection as a starting point
+   (works even if your headers don't match exactly, e.g. "Contact No." or
+   "Mobile" both match Phone Number). The app blocks continuing if two
+   fields end up pointed at the same column — a common copy-paste mistake
+   that otherwise silently corrupts every export.
 3. **Review university name mapping** — the app groups near-duplicate
    spellings ("BUET", "buet", "B.U.E.T", "Bangladesh University of
    Engineering and Technology") into one canonical name, using a curated
@@ -40,29 +45,33 @@ one).
    "needs attention" panel for handles that were blocked, not found, or
    invalid — each retryable with one click, updating live the same way.
 6. **Contest analysis** — pick any contest from a dropdown (defaults to the
-   most recent) and see, for that contest specifically: how many students'
-   rating went up, how many went down, how many were unchanged, and who
-   didn't play at all — with a full before/after list, exportable on its own.
-7. **Export** — three Excel downloads:
-   - **Result Excel**: Name, Batch, CodeChef Handle, Max Rank,
-     University/Institute (plus bonus columns: Current Rating, Star Tier,
-     Status, Notes).
+   most recent), then three tabs: **Rating Increased**, **Rating
+   Decreased**, **Did Not Participate**. Each participant row shows rating
+   before/after, and — separately — their per-contest **rank** before/after
+   and whether their rank specifically improved (rank and rating don't
+   always move together). Every row carries the full roster identity:
+   Batch, Name, Email, Phone Number, Institute Name, CodeChef Handle.
+7. **Export** — three Excel downloads, all identity-first (Batch, Name,
+   Email, Phone Number, Institute Name, CodeChef Handle lead every sheet):
+   - **Result Excel**: identity columns + Max Rank, Current Rating, Star
+     Tier, Status, Notes.
    - **Full Report Excel**: multi-sheet workbook — Summary, Batch Breakdown,
      University Breakdown, University Mapping audit trail, Leaderboard,
      Needs Attention, and Raw Data.
-   - **Contest Breakdown Excel**: whichever contest is selected in Contest
-     Analysis — Participated / Did Not Participate / Unresolved as separate
-     sheets.
+   - **Contest Breakdown Excel**: for whichever contest is selected —
+     separate sheets for Summary, Rating Increased, Rating Decreased,
+     Rating Unchanged, Did Not Participate, and Unresolved.
 
 ## Important terminology note
 
 CodeChef does not store a field literally called "max rank." What it does
 track is **Highest Rating** (a student's peak contest rating) and, from
-that, a **star tier** (1★–7★). This app's "Max Rank" column is that Highest
-Rating number — the closest real, verifiable equivalent. Live per-contest
-**Global Rank** isn't a stable profile-level stat (it resets/archives per
-contest, and shows "Inactive" for most past contests), so it isn't part of
-this dashboard.
+that, a **star tier** (1★–7★) — this is what the dashboard's "Max Rank"
+column shows. Separately, **per-contest rank** (a student's placement in one
+specific contest) *is* available and is what Contest Analysis's "Rank
+Before/After" columns use — it just isn't a stable, cumulative
+profile-level stat the way rating is, so it only appears in that
+contest-specific view, not the main leaderboard.
 
 ## Contest analysis: why contests are grouped, not matched by exact code
 
@@ -79,12 +88,15 @@ plus calendar date, so the dropdown lists real contest *events*, and a
 student is correctly matched regardless of which division they landed in.
 "Rating before" for a student's first-ever contest falls back to their
 `initialRating` (CodeChef's starting value, usually 1000) since there's no
-earlier entry to compare against.
+earlier entry to compare against; "Rank before" instead stays `null` for a
+first contest (there's no meaningful prior placement to fall back to), and
+both the UI and every export show that as "N/A (first contest)" rather than
+a misleading number.
 
 This only works with the Parse.bot data source (`lib/parseBotScraper.ts`),
-since it's the one that returns full per-contest history — the direct-scrape
-fallback (`lib/codechefScraper.ts`) only ever extracted the single highest
-rating and doesn't populate `contestHistory`.
+since it's the one that returns full per-contest history (rating *and*
+rank) — the direct-scrape fallback (`lib/codechefScraper.ts`) only ever
+extracted the single highest rating and doesn't populate `contestHistory`.
 
 ## Data source: Parse.bot's CodeChef API
 
@@ -249,7 +261,8 @@ lib/
   excelIO.ts             — reading the upload, writing all three export workbooks
   universityMap.ts       — curated alias dictionary + fuzzy clustering fallback
   stats.ts                — batch/university/leaderboard/summary aggregation
-  starTier.ts, tierColors.ts — CodeChef's star-band rules and matching colors
+  starTier.ts, tierColors.ts — CodeChef's star-band rules and matching colors (dark-theme-tuned, hues spread apart for distinguishability)
+  chartTheme.ts           — shared dark-mode styling constants for recharts (grid/axis/tooltip/legend)
 ```
 
 ## Extending the university dictionary

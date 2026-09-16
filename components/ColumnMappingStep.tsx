@@ -9,10 +9,12 @@ interface Props {
 }
 
 const FIELD_LABELS: Array<{ key: keyof ColumnMapping; label: string; required: boolean }> = [
-  { key: 'name', label: 'Name', required: true },
   { key: 'batch', label: 'Batch', required: true },
+  { key: 'name', label: 'Name', required: true },
+  { key: 'email', label: 'Email', required: true },
+  { key: 'phone', label: 'Phone Number', required: true },
+  { key: 'university', label: 'Institute Name', required: true },
   { key: 'handle', label: 'CodeChef Handle', required: true },
-  { key: 'university', label: 'University / Institute', required: true },
 ];
 
 export default function ColumnMappingStep({ sheet, initialMapping, onConfirm, onBack }: Props) {

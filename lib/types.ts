@@ -7,9 +7,11 @@ export interface SourceRow {
   rowIndex: number; // 1-based row number in the ORIGINAL sheet (for error reporting)
   name: string;
   batch: string;
+  email: string;
+  phone: string;
   handleRaw: string; // exactly as typed by whoever filled the sheet
   handle: string; // cleaned (trimmed, URL-stripped, invisible chars removed)
-  university: string; // as typed
+  university: string; // "Institute Name" as typed
   universityNormalized: string; // after mapping/clustering
 }
 
@@ -29,6 +31,7 @@ export interface ContestHistoryEntry {
   code: string; // e.g. "START101B" — unique per division
   name: string; // e.g. "Starters 101 Division 2 (Rated)"
   rating: number; // rating AFTER this contest
+  rank: number; // this student's rank IN this specific contest
   end_date: string; // "YYYY-MM-DD HH:mm:ss"
 }
 

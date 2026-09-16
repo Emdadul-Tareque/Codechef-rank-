@@ -57,12 +57,21 @@ export function getContestEventOptions(records: JoinedRecord[]): ContestEventOpt
 export interface ContestParticipant {
   name: string;
   batch: string;
+  email: string;
+  phone: string;
   university: string;
   handle: string;
   contestName: string; // the specific division/code they actually played, e.g. "Starters 101 Division 3 (Rated)"
   ratingBefore: number;
   ratingAfter: number;
   delta: number;
+  // Per-contest RANK (this student's placement in that specific contest) is
+  // not cumulative like rating — "before" means their rank in the PREVIOUS
+  // contest they played, for a contest-over-contest placement comparison.
+  // null for a student's first-ever contest (no prior contest to compare).
+  rankBefore: number | null;
+  rankAfter: number;
+  rankImproved: boolean | null; // true = rank got numerically smaller (better placement)
 }
 
 export interface ContestBreakdown {
@@ -108,15 +117,25 @@ export function computeContestBreakdown(records: JoinedRecord[], eventKey: strin
     const ratingAfter = entry.rating;
     const delta = ratingAfter - ratingBefore;
 
+    const prevRank = idx === 0 ? null : history[idx - 1].rank;
+    const rankBefore = prevRank !== null && prevRank >= 0 ? prevRank : null;
+    const rankAfter = entry.rank;
+    const rankImproved = rankBefore === null || rankAfter < 0 ? null : rankAfter < rankBefore;
+
     const participant: ContestParticipant = {
       name: r.name,
       batch: r.batch,
+      email: r.email,
+      phone: r.phone,
       university: r.universityNormalized,
       handle: r.handle,
       contestName: entry.name,
       ratingBefore,
       ratingAfter,
       delta,
+      rankBefore,
+      rankAfter,
+      rankImproved,
     };
 
     if (delta > 0) increased.push(participant);
